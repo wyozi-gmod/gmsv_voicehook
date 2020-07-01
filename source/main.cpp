@@ -6,8 +6,13 @@
 #include <scanning/symbolfinder.hpp>
 #include <detouring/hook.hpp>
 #include "voice_silk.h"
+#include <Platform.hpp>
+#include <steam/isteamclient.h>
+#include <steam/isteamuser.h>
 
 #define MAX_PLAYERS		129
+
+static const char steamclient_name[] = "SteamClient012";
 
 class IClient;
 
@@ -25,6 +30,10 @@ namespace global {
     static Detouring::Hook bvd_hook;
 
     static int intercepts = 0;
+
+    HSteamPipe g_hPipe;
+    HSteamUser g_hUser;
+    ISteamUser* g_user;
 
     Voice_Silk *m_Silk[MAX_PLAYERS];
     FILE *m_VoiceHookFiles[MAX_PLAYERS];
@@ -75,44 +84,17 @@ namespace global {
 
             int nVoiceBytes = nBytes;
             char *pVoiceData = data;
-            Voice *pVoiceCodec = NULL;
-            
-            // Ideally we would check the sv_use_steam_voice cvar here.
-            // Instead we'll look for steam headers.
-            if (nBytes >= 15)
-            {
-                unsigned int flags = ((data[4] << 24) | (data[5] << 16) | (data[6] << 8) | data[7]);
-                
-                // Check for silk data.
-                if (flags == 0x1001001)
+
+            if (g_user) {
+                static char decompressed[20000];
+
+                uint32 numUncompressedBytes = 0; 
+                int res = g_user->DecompressVoice(pVoiceData, nVoiceBytes,
+                    decompressed, sizeof(decompressed), &numUncompressedBytes, 44100 );
+
+                if ( res == k_EVoiceResultOK && numUncompressedBytes > 0 )
                 {
-                    static const unsigned int headerSize = 11;
-                    unsigned char nPayLoad = data[8];
-
-                    if (nPayLoad != 11)
-                        return; // Not the data we're looking for.
-
-                    // Skip the steam header.
-                    nVoiceBytes = nBytes - headerSize;
-                    pVoiceData = &data[headerSize];
-
-                    // Make sure this player has a codec loaded.
-                    if (!m_Silk[playerslot])
-                    {
-                        m_Silk[playerslot] = new Voice_Silk;
-                        m_Silk[playerslot]->Init();
-                    }
-
-                    pVoiceCodec = m_Silk[playerslot];
-                }
-            }
-
-            if (pVoiceCodec) {
-                // Decompress voice data.
-                static char decompressed[8192];
-                int nDecompressed = pVoiceCodec->Decompress(pVoiceData, nVoiceBytes, decompressed, sizeof(decompressed));
-                if (nDecompressed) {
-                    fwrite(decompressed, 1, nDecompressed * 2, voicefile);
+                    fwrite(decompressed, 1, numUncompressedBytes, voicefile);
                 }
             }
         }
@@ -157,7 +139,26 @@ namespace global {
             return;
         }
 
+        SourceSDK::FactoryLoader* mod = new SourceSDK::FactoryLoader("steamclient");
+        if (!mod->IsValid()) {
+            LUA->ThrowError( "failed to find steamclient" );
+            return;
+        }
+
+        ISteamClient* g_pSteamClient = mod->GetInterface<ISteamClient>(steamclient_name);
+        if(!g_pSteamClient)
+        {
+            LUA->ThrowError( "failed to acquire steamclient pointer" );
+            return;
+        }
+
+        g_hUser = g_pSteamClient->CreateLocalUser(&g_hPipe, k_EAccountTypeIndividual);
+        g_user = g_pSteamClient->GetISteamUser(g_hUser, g_hPipe, "SteamUser020");
+
         LUA->CreateTable( );
+
+		LUA->PushString("fuuu");
+        LUA->SetField( -2, "Version" );
 
 		LUA->PushCFunction( GetIntercepts );
         LUA->SetField( -2, "Intercepts" );
