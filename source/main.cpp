@@ -5,7 +5,6 @@
 #include <GarrysMod/Symbol.hpp>
 #include <scanning/symbolfinder.hpp>
 #include <detouring/hook.hpp>
-#include "voice_silk.h"
 #include <Platform.hpp>
 #include <steam/isteamclient.h>
 #include <steam/isteamuser.h>
@@ -35,7 +34,6 @@ namespace global {
     HSteamUser g_hUser;
     ISteamUser* g_user;
 
-    Voice_Silk *m_Silk[MAX_PLAYERS];
     FILE *m_VoiceHookFiles[MAX_PLAYERS];
 
     LUA_FUNCTION_STATIC(GetIntercepts)
@@ -130,14 +128,6 @@ namespace global {
         if (!fGetPlayerSlot) {
             LUA->ThrowError( "unable to find GetPlayerSlot" );
         }
-        
-        m_Silk[0] = new Voice_Silk;
-
-        if (!m_Silk[0]->Init())
-        {
-            LUA->ThrowError( "unable to init first Silk" );
-            return;
-        }
 
         SourceSDK::FactoryLoader* mod = new SourceSDK::FactoryLoader("steamclient");
         if (!mod->IsValid()) {
@@ -179,7 +169,6 @@ namespace global {
 GMOD_MODULE_OPEN()
 {
 	for (int i = 0; i < MAX_PLAYERS; i++) {
-		global::m_Silk[i] = NULL;
         global::m_VoiceHookFiles[i] = NULL;
     }
 
@@ -190,11 +179,6 @@ GMOD_MODULE_OPEN()
 GMOD_MODULE_CLOSE( )
 {
 	for (int i = 0; i < MAX_PLAYERS; i++) {
-		if (global::m_Silk[i])
-		{
-			global::m_Silk[i]->Release();
-			global::m_Silk[i] = NULL;
-		}
         if (global::m_VoiceHookFiles[i]) {
             fclose(global::m_VoiceHookFiles[i]);
             global::m_VoiceHookFiles[i] = NULL;
