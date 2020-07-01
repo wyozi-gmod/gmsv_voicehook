@@ -34,6 +34,7 @@ namespace global {
     HSteamUser g_hUser;
     ISteamUser* g_user;
 
+    bool hooking[MAX_PLAYERS];
     FILE *m_VoiceHookFiles[MAX_PLAYERS];
 
     LUA_FUNCTION_STATIC(GetIntercepts)
@@ -42,26 +43,42 @@ namespace global {
         return 1;
     }
 
-    LUA_FUNCTION_STATIC( EnableHook )
+    inline int GetEntityIndex( GarrysMod::Lua::ILuaBase *LUA, int i )
     {
-        bool enabled = bvd_hook.Enable();
-        LUA->PushBool(enabled);
-        return 1;
+        LUA->Push( i );
+        LUA->GetField( -1, "EntIndex" );
+        LUA->Push( -2 );
+        LUA->Call( 1, 1 );
+
+        return static_cast<int32_t>( LUA->GetNumber( -1 ) );
     }
 
-    LUA_FUNCTION_STATIC( DisableHook )
+    LUA_FUNCTION_STATIC( Start )
     {
-        bool disabled = bvd_hook.Disable();
-        LUA->PushBool(disabled);
+        LUA->CheckType(1, GarrysMod::Lua::Type::Entity);
+        int index = GetEntityIndex(LUA, 1);
 
-        for (int i = 0; i < MAX_PLAYERS; i++) {
-            if (m_VoiceHookFiles[i]) {
-                fclose(m_VoiceHookFiles[i]);
-                m_VoiceHookFiles[i] = NULL;
-            }
+        char fname[64];
+        sprintf(fname, "garrysmod/data/voicehook/%d.dat", index);
+        m_VoiceHookFiles[index] = fopen(fname, "ab");
+
+        hooking[index] = true;
+        return 0;
+    }
+
+    LUA_FUNCTION_STATIC( End )
+    {
+        LUA->CheckType(1, GarrysMod::Lua::Type::Entity);
+        int index = GetEntityIndex(LUA, 1);
+
+        hooking[index] = false;
+
+        if (m_VoiceHookFiles[index]) {
+            fclose(m_VoiceHookFiles[index]);
+            m_VoiceHookFiles[index] = NULL;
         }
 
-        return 1;
+        return 0;
     }
 
 
@@ -72,13 +89,11 @@ namespace global {
         
         if (pClient && nBytes && data) {
             int playerslot = fGetPlayerSlot(pClient);
+            if (!hooking[playerslot]) {
+                return;
+            }
 
             FILE* voicefile = m_VoiceHookFiles[playerslot];
-            if (!voicefile) {
-                char fname[64];
-                sprintf(fname, "voicehook/%d.dat", playerslot);
-                voicefile = m_VoiceHookFiles[playerslot] = fopen(fname, "w+");
-            }
 
             int nVoiceBytes = nBytes;
             char *pVoiceData = data;
@@ -102,8 +117,8 @@ namespace global {
         if (!engine_loader.IsValid( )) return;
 
         struct stat st;
-        if (stat("voicehook", &st) == -1) {
-            mkdir("voicehook", 0777);
+        if (stat("garrysmod/data/voicehook", &st) == -1) {
+            mkdir("garrysmod/data/voicehook", 0777);
         }
 
 		SymbolFinder symfinder;
@@ -119,6 +134,7 @@ namespace global {
 		if( !bvd_hook.Create( reinterpret_cast<void *>( original_BroadcastVoiceData ),
 			reinterpret_cast<void *>( &hook_BroadcastVoiceData ) ) )
 			LUA->ThrowError( "unable to create detour for BroadcastVoiceData" );
+        bvd_hook.Enable();
 
         fGetPlayerSlot = reinterpret_cast<tGetPlayerSlot>(symfinder.Resolve(
             engine_loader.GetModule( ),
@@ -147,17 +163,14 @@ namespace global {
 
         LUA->CreateTable( );
 
-		LUA->PushString("fuuu");
-        LUA->SetField( -2, "Version" );
-
 		LUA->PushCFunction( GetIntercepts );
-        LUA->SetField( -2, "Intercepts" );
+        LUA->SetField( -2, "InterceptCount" );
 
-		LUA->PushCFunction( EnableHook );
-        LUA->SetField( -2, "Enable" );
+		LUA->PushCFunction( Start );
+        LUA->SetField( -2, "Start" );
 
-		LUA->PushCFunction( DisableHook );
-        LUA->SetField( -2, "Disable" );
+		LUA->PushCFunction( End );
+        LUA->SetField( -2, "End" );
 
         LUA->SetField( GarrysMod::Lua::INDEX_GLOBAL, "voicehook" );
     }
@@ -170,6 +183,7 @@ GMOD_MODULE_OPEN()
 {
 	for (int i = 0; i < MAX_PLAYERS; i++) {
         global::m_VoiceHookFiles[i] = NULL;
+        global::hooking[i] = false;
     }
 
     global::start(LUA);

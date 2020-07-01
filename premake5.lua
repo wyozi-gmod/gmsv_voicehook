@@ -17,7 +17,3 @@ CreateWorkspace({name = "voicehook", abi_compatible = true})
 		IncludeSDKTier1()
 		IncludeDetouring()
         IncludeScanning()
-        
-        linkoptions {"../../../libSKP_SILK_SDK.a"}
-        linkoptions		{"-Wl,-rpath='$$ORIGIN'"}
-        --links {"SKP_SILK_SDK"}
