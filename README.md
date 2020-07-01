@@ -6,6 +6,22 @@ Requires garrysmod_common in same folder.
 
 Credits to Autogain author (https://forums.alliedmods.net/showthread.php?t=189527) and Metastruct
 
+## Example
+
+```lua
+require "voicehook"
+
+concommand.Add("recordme", function(ply)
+    voicehook.Start(ply)
+    timer.Simple(2, function()
+        voicehook.End(ply)
+        -- there is now voicedata file in garrysmod/data/<ply:EntIndex()>.dat
+        -- which you can play with ffplay -f s16le -ar 44k 1.dat
+    end)
+end)
+
+```
+
 ## Misc stuff
 
 **Premake**
